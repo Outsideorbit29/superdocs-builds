@@ -103,14 +103,18 @@ class SuperDocsClient:
 
     def upload_base64(self, filename: str, file_base64: str,
                       session_id: str | None = None, return_html: bool = False) -> UploadResult:
-        body = {"filename": filename, "file_base64": file_base64}
-        if session_id is not None:
-            body["session_id"] = session_id
+        # The real API only *persists* a document (making it editable via chat)
+        # when the upload carries a session_id; without one it is a one-off
+        # conversion that returns no session. Mint a session id client-side so the
+        # four-call contract always has a durable document to edit.
+        if session_id is None:
+            session_id = _new_session_id()
+        body = {"filename": filename, "file_base64": file_base64, "session_id": session_id}
         if return_html:
             body["return_html"] = True
         data = self._post("/v1/documents/upload-base64", json=body)
         return UploadResult(
-            session_id=data.get("session_id") or session_id or "",
+            session_id=data.get("session_id") or session_id,
             document_id=data.get("document_id"),
             chunks_count=data.get("chunks_count"),
             version_id=data.get("version_id"),
@@ -239,3 +243,9 @@ def encode_file(path: str) -> str:
     """Read a file and return its base64 payload for upload."""
     with open(path, "rb") as fh:
         return base64.b64encode(fh.read()).decode("ascii")
+
+
+def _new_session_id() -> str:
+    """Mint a session id that matches the API's ``^[a-zA-Z0-9_\\-.]+$`` pattern."""
+    import uuid
+    return f"sess-{uuid.uuid4().hex}"
