@@ -116,30 +116,32 @@ def _insert_late(proposal: proposals.Proposal, file: str, after: int, brief: str
 def _build_client(args: argparse.Namespace) -> SuperDocsClient:
     if args.mock:
         return SuperDocsClient(base_url=_mock_base_url(), api_key=None)
-    key = args.key or os.environ.get("SUPERDOCS_API_KEY") or _agent_key()
+    key = args.key or os.environ.get("SUPERDOCS_API_KEY") or _personal_key()
     if not key:
         print(
             "error: no SuperDocs API key. Export SUPERDOCS_API_KEY, pass --key, "
-            "or run `python tools/superdocs_login.py` to create an agent account.",
+            "or save the dashboard key to ~/.superdocs/personal_key.txt "
+            "(use.superdocs.app → Settings → API Keys).",
             file=sys.stderr,
         )
         raise SystemExit(2)
     return SuperDocsClient(base_url="https://api.superdocs.app", api_key=key)
 
 
-def _agent_key() -> str | None:
-    """The agent account key saved by ``tools/superdocs_login.py``, if any.
+def _personal_key() -> str | None:
+    """The dashboard API key saved to ``~/.superdocs/personal_key.txt``, if any.
 
-    Read straight from the credentials file into the request — never echoed.
+    Read straight from the file into the request — never echoed. (The earlier
+    agent-account flow is retired: an agent account stays on its own free tier
+    and cannot be merged into an existing human account, so live runs use the
+    human account's key — and its credits — instead.)
     """
-    import json as _json
     from pathlib import Path
 
-    creds = Path.home() / ".superdocs" / "agent_credentials.json"
-    if not creds.exists():
+    keyfile = Path.home() / ".superdocs" / "personal_key.txt"
+    if not keyfile.exists():
         return None
-    data = _json.loads(creds.read_text(encoding="utf-8"))
-    return data.get("api_key")
+    return keyfile.read_text(encoding="utf-8").strip() or None
 
 
 def _mock_base_url() -> str:

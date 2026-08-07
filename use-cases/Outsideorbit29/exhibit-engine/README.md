@@ -84,15 +84,20 @@ exhibit-engine run --brief sample/brief/supporting_brief.md \
     --evidence sample/evidence --format pdf --live --out packet-out
 ```
 
-No key in the environment? The CLI also reads the agent account saved by
-`python tools/superdocs_login.py` (`~/.superdocs/agent_credentials.json`), so a
-live run works after a one-time signup:
+No key in the environment? The CLI also reads the dashboard API key saved to
+`~/.superdocs/personal_key.txt` (create one at use.superdocs.app → Settings →
+API Keys; the key never touches the transcript):
 
 ```bash
-python tools/superdocs_login.py --agent-name exhibit-engine   # prints status; key never echoed
+# one line, just the key:  sk_...
+echo sk_... > ~/.superdocs/personal_key.txt
 exhibit-engine run --brief sample/brief/supporting_brief.md \
     --evidence sample/evidence --format html --live --out packet-out
 ```
+
+(An agent-account variant existed via `tools/superdocs_login.py`, but SuperDocs
+keeps agent accounts on their own free tier and won't merge them into an
+existing human account, so live runs use the human account's key and credits.)
 
 `--live` drives the real API (the approval gate asks you to approve each
 proposed change); `--mock` drives the bundled fake. Both run the identical
