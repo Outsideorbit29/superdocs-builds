@@ -22,6 +22,16 @@ approval gate → approve → export**.
 
 ---
 
+## A filing in the making
+
+![Assembled filing: packet cover, exhibit index and numbered cover pages](screenshot.png)
+
+The start of an exported packet: the filing cover, the exhibit index whose page
+ranges match the export exactly, and the first numbered cover pages. The
+commands below reproduce it.
+
+---
+
 ## Quick start
 
 ```bash
@@ -95,7 +105,7 @@ the front matter can never disagree with the rendered index pages.
 
 Citations are **computed from the set**, never stored against fixed numbers, so
 any mutation (late insert, remove) re-derives everything that depends on
-position. The 37-test suite locks this down (`tests/`):
+position. The 42-test suite locks this down (`tests/`):
 
 - `test_paging.py` — index page ranges equal rendered packet pages.
 - `test_renumber.py` — late insert renumbers covers, index, citations, pages.
@@ -103,6 +113,8 @@ position. The 37-test suite locks this down (`tests/`):
 - `test_order.py` — evidence order follows the brief's argument.
 - `test_superdocs_client.py` + `test_flow.py` — the four-call HTTP contract.
 - `test_loader.py` — mixed-format evidence extraction.
+- `test_covers.py` — cover-page text is grammatical and grounded in the exhibit
+  (a regression guard on the deterministic cover writer).
 
 ## How ordering and citations work
 
@@ -145,7 +157,7 @@ exhibit/
   loader.py     mixed-format evidence extraction
   model.py      Exhibit / ExhibitSet / PaginatedPacket
   crew.py       optional CrewAI OrderPlanner + CoverWriter crew
-tests/          37 tests (mock server, no key required)
+tests/          42 tests (mock server, no key required)
 tools/make_sample.py  regenerates the synthetic sample filing
 sample/         synthetic brief + mixed-format evidence pile
 ```
@@ -155,3 +167,7 @@ sample/         synthetic brief + mixed-format evidence pile
 Everything in `sample/` is synthetic and fictitious (the "Sharma" family spousal
 visa filing) — no real client data, no confidential material, no real documents.
 Never put real evidence in the repo; real client files belong outside it.
+
+---
+
+*Built by Anish Kumar for the SuperDocs Round 2 task.*

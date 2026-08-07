@@ -83,23 +83,126 @@ def _human_title(source: str) -> str:
     return " ".join(w.capitalize() for w in base.split()[:8]) or "Exhibit"
 
 
+# A "Label: value" line, the shape most structured evidence (passports, bank
+# statements, tax returns) arrives in.
+_KV_RE = re.compile(
+    r"(?im)^\s*([A-Za-z][A-Za-z0-9 &()'/.\-]{1,40}?)\s*:\s*(.{3,120})\s*$"
+)
+
+
 def _default_cover_writer(title: str, content: str) -> str:
     """Deterministic cover text from the exhibit's own content.
 
-    Names and places (capitalised words in the source) are excluded so the line
-    reads like a paralegal's, grounded in the document rather than listing
-    proper nouns. A CrewAI CoverWriter agent replaces this when configured.
+    Always grammatical and grounded — never a list of truncated keyword stems.
+    Documents that are a run of "Label: value" lines (passports, bank
+    statements, tax returns) are summarised by their most concrete field: value
+    pairs; prose documents by quoting their most evidential sentence; anything
+    else falls back to a clean, title-grounded line. A CrewAI CoverWriter agent
+    replaces this line when configured.
     """
-    from .citations import _STOP
+    pairs = _key_value_pairs(content)
+    if len(pairs) >= 2:
+        top = _rank_pairs(pairs)[:3]
+        listing = ", ".join(f"{label}: {value}" for label, value in top)
+        if len(listing) <= 200:
+            return f"Evidences {listing}."
+    clause = _best_clause(content)
+    if clause:
+        return f"Evidences: “{clause}”"
+    return f"{title} — supporting evidence for this application."
 
-    from collections import Counter as _Counter
-    from .citations import _evidence_content_keywords
 
-    freq = _Counter(_evidence_content_keywords(content))
-    top = [w for w, _ in freq.most_common(3) if w]
-    if not top:
-        return f"{title} supports the claims made in this application."
-    return f"Evidences {top[0]}, {top[1]}, and {top[2]} relevant to this application."
+def _key_value_pairs(content: str) -> list[tuple[str, str]]:
+    """``Label: value`` lines in the content, cleaned and value-capped."""
+    pairs: list[tuple[str, str]] = []
+    for m in _KV_RE.finditer(content):
+        label = m.group(1).strip().rstrip(":")
+        value = re.sub(r"\s+", " ", m.group(2)).strip(" \"'")
+        if not label or not value:
+            continue
+        # A value that is itself an ALL-CAPS heading is boilerplate, not a fact.
+        if value.isupper() and len(value) > 24:
+            continue
+        pairs.append((label, _truncate_words(value, 12)))
+    return pairs
+
+
+def _rank_pairs(pairs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Most concrete pairs first: digit groups (dates, amounts, numbers) and
+    currency win; ties keep document order so a readable label order (e.g.
+    ``Date of Birth`` before ``Date of Issue``) survives."""
+    def key(p: tuple[str, str]) -> tuple[int, int]:
+        _label, value = p
+        digits = len(re.findall(r"\d", value))
+        money = len(re.findall(r"[$€£₹]", value))
+        return (-(digits + 2 * money), 0)
+    return sorted(pairs, key=key)
+
+
+def _best_clause(content: str) -> str | None:
+    """The exhibit's most evidential clause, cleaned and capped.
+
+    Prefers the document's own quoted voice (support letters quote their
+    authors), then plain sentences; markdown headings, list markers and photo
+    captions are stripped so the line reads as a fact, never a heading or a
+    fragment. Concrete clauses (dates, amounts) outrank general prose.
+    """
+    candidates = _quoted_clauses(content) + _plain_clauses(content)
+    if not candidates:
+        return None
+
+    def score(s: str) -> int:
+        digits = len(re.findall(r"\d", s))
+        money = len(re.findall(r"[$€£₹]", s))
+        length = len(s)
+        quoted = s[:1] in {'"', "“"}
+        caption = 3 if re.match(r"^[A-Za-z ]{2,30}:", s) else 0
+        return (
+            2 * digits + 2 * money
+            + (3 if quoted else 0)
+            + (2 if 25 <= length <= 130 else 0)
+            - (4 if length < 20 else 0)
+            - 2 * len(re.findall(r"[()]", s))
+            - caption
+        )
+
+    return _truncate_words(max(candidates, key=score), 30)
+
+
+def _quoted_clauses(content: str) -> list[str]:
+    """Quoted spans in the content, each re-split into its own sentence so a
+    multi-sentence letter quote yields separate, quotable clauses."""
+    clauses: list[str] = []
+    for m in re.finditer(r'["“]([^"”]{15,220})["”]', content):
+        span = re.sub(r"\s+", " ", m.group(1))
+        for s in re.split(r"(?<=[.!?])\s+", span):
+            s = s.strip(' "“”\'')
+            if 15 <= len(s) <= 200 and not s.isupper():
+                clauses.append(s)
+    return clauses
+
+
+def _plain_clauses(content: str) -> list[str]:
+    """Sentences with markdown headings, list markers and photo captions
+    stripped, so a fact reads as a fact rather than a heading or fragment."""
+    text = re.sub(r"(?im)^#+\s+.*$", "", content)
+    text = re.sub(r"(?im)^\s*(?:\d+[.)]|\*|-)\s+", "", text)
+    text = re.sub(r"\s+", " ", text)
+    clauses: list[str] = []
+    for s in re.split(r"(?<=[.!?\"'”’])\s+", text):
+        s = s.strip(' "“”’\'')
+        s = re.sub(r"^photo[-_][A-Za-z0-9]+\.\w+\s*[—–-]\s*", "", s)
+        if 15 <= len(s) <= 200 and not s.isupper() and s[:1].isalpha():
+            clauses.append(s)
+    return clauses
+
+
+def _truncate_words(text: str, max_words: int) -> str:
+    """Cap a clause at ``max_words`` on word boundaries, with an ellipsis."""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    return " ".join(words[:max_words]).rstrip(".,;:") + "…"
 
 
 def _order_note(ordered: list[EvidenceItem]) -> str:
