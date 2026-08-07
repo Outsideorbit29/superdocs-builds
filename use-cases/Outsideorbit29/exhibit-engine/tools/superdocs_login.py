@@ -83,6 +83,18 @@ def _signup(agent_name: str, base_url: str) -> dict:
     return resp.json()
 
 
+def _handoff(email: str, key: str, base_url: str) -> dict:
+    """Let the human adopt the agent account (links it to their login/credits)."""
+    resp = httpx.post(
+        f"{base_url}/v1/agents/handoff",
+        headers={"Authorization": f"Bearer {key}"},
+        json={"email": email},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 def _print_status(me: dict) -> None:
     """Print account status with any credential-like field redacted."""
     redacted = {k: ("***" if "key" in k.lower() else v) for k, v in me.items()}
@@ -92,10 +104,24 @@ def _print_status(me: dict) -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--agent-name", default="exhibit-engine")
+    ap.add_argument("--handoff", metavar="EMAIL",
+                    help="hand the saved agent account to a human (they adopt "
+                         "it and its credits merge under their login)")
     ap.add_argument("--base-url", default=BASE_URL)
     args = ap.parse_args(argv)
 
     creds = _load_creds()
+    if args.handoff:
+        if not (creds and creds.get("api_key")):
+            print(f"no saved account at {CREDS}; sign up first", file=sys.stderr)
+            return 1
+        print(f"handing the agent account at {CREDS} to {args.handoff} ...")
+        try:
+            _print_status(_handoff(args.handoff, creds["api_key"], args.base_url))
+        except httpx.HTTPError as exc:
+            print(f"handoff failed: {exc}", file=sys.stderr)
+            return 1
+        return 0
     if creds and creds.get("api_key"):
         print(f"reusing account saved at {CREDS}")
         try:
