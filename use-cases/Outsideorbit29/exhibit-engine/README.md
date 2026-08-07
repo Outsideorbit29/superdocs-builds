@@ -84,9 +84,25 @@ exhibit-engine run --brief sample/brief/supporting_brief.md \
     --evidence sample/evidence --format pdf --live --out packet-out
 ```
 
-`--live` drives the real API (the approval gate will ask you to approve each
+No key in the environment? The CLI also reads the agent account saved by
+`python tools/superdocs_login.py` (`~/.superdocs/agent_credentials.json`), so a
+live run works after a one-time signup:
+
+```bash
+python tools/superdocs_login.py --agent-name exhibit-engine   # prints status; key never echoed
+exhibit-engine run --brief sample/brief/supporting_brief.md \
+    --evidence sample/evidence --format html --live --out packet-out
+```
+
+`--live` drives the real API (the approval gate asks you to approve each
 proposed change); `--mock` drives the bundled fake. Both run the identical
-four-call contract.
+four-call contract (upload → chat → approve → export). The live export is the
+**edited brief with in-brief citations** — the model inserts each `[See Exhibit N
+(Title), which evidences …]` marker at the sentence that relies on it, with the
+real names, dates, amounts and numbers (the proposal is fictional sample data).
+Cover pages, exhibit contents and the index are assembled deterministically by
+the engine into `packet.html`, whose page ranges match the index by construction
+— the model is never asked to invent layout, only to mark the brief.
 
 ---
 

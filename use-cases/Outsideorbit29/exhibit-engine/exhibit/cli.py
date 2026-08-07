@@ -116,11 +116,30 @@ def _insert_late(proposal: proposals.Proposal, file: str, after: int, brief: str
 def _build_client(args: argparse.Namespace) -> SuperDocsClient:
     if args.mock:
         return SuperDocsClient(base_url=_mock_base_url(), api_key=None)
-    key = args.key or os.environ.get("SUPERDOCS_API_KEY")
+    key = args.key or os.environ.get("SUPERDOCS_API_KEY") or _agent_key()
     if not key:
-        print("error: SUPERDOCS_API_KEY not set (export it or pass --key)", file=sys.stderr)
+        print(
+            "error: no SuperDocs API key. Export SUPERDOCS_API_KEY, pass --key, "
+            "or run `python tools/superdocs_login.py` to create an agent account.",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
     return SuperDocsClient(base_url="https://api.superdocs.app", api_key=key)
+
+
+def _agent_key() -> str | None:
+    """The agent account key saved by ``tools/superdocs_login.py``, if any.
+
+    Read straight from the credentials file into the request — never echoed.
+    """
+    import json as _json
+    from pathlib import Path
+
+    creds = Path.home() / ".superdocs" / "agent_credentials.json"
+    if not creds.exists():
+        return None
+    data = _json.loads(creds.read_text(encoding="utf-8"))
+    return data.get("api_key")
 
 
 def _mock_base_url() -> str:

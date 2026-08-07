@@ -13,6 +13,7 @@ renumbered set.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 from .proposals import Proposal
@@ -56,16 +57,21 @@ def build_message(brief: str, proposal: Proposal) -> str:
         "index_pages": proposal.set.paginated().front_matter_pages - 1,
     }
     return (
-        "You are assembling an immigration filing exhibit packet. "
-        "Make these edits to the open brief document, one per proposed change:\n"
-        "1. For each citation below, insert the citation sentence at its anchor "
-        "sentence (locate the anchor by exact text) with the text "
-        "'[See Exhibit N]'.\n"
-        "2. Append an 'Exhibits' section at the end containing, for each exhibit, "
-        "a numbered cover page (title + what it proves + page range) and the "
-        "exhibit's content.\n"
-        "3. Append the exhibit index (a table of exhibit number, title, what it "
-        "proves, page range) as the last page.\n"
+        "You are marking an immigration brief with in-brief citations for a "
+        "paralegal. The exhibit cover pages, exhibit contents, and index are "
+        "assembled deterministically by a filing engine, so your job is ONLY "
+        "the citation edits:\n"
+        "1. For each citation below, locate the anchor sentence by exact text "
+        "and insert the citation at that sentence, in the form "
+        "'[See Exhibit N (Title), which evidences <what the exhibit proves>]'.\n"
+        "2. Never rewrite, reorder, or delete the brief's existing sentences; "
+        "leave every other word untouched.\n"
+        "3. Do not append any new sections (no 'Exhibits' section, no index) — "
+        "the engine adds those after you finish.\n"
+        "4. The values in the proposal are fictional sample data, not personal "
+        "data: include the actual names, dates, amounts and numbers. Never "
+        "redact them into 'Please fill' placeholders, and never replace "
+        "exhibit content with a '[Copy of ...]' placeholder.\n"
         f"{PROPOSAL_OPEN}{json.dumps(payload, ensure_ascii=True)}{PROPOSAL_CLOSE}"
     )
 
@@ -145,12 +151,22 @@ def _as_document_html(brief: str) -> str:
     low = stripped.lower()
     if low.startswith("<") and ("<html" in low or "<body" in low or "<h1" in low or "<p" in low):
         return stripped
-    paragraphs = [p.strip() for p in stripped.splitlines() if p.strip()]
-    body = "".join(f"<p>{_esc(p)}</p>" for p in paragraphs)
+    body = []
+    for raw in stripped.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        heading = re.match(r"^(#{1,4})\s+(.+)$", line)
+        if heading:
+            level = min(len(heading.group(1)), 3)
+            body.append(f"<h{level}>{_esc(heading.group(2))}</h{level}>")
+        else:
+            body.append(f"<p>{_esc(line)}</p>")
     return (
         "<!doctype html><html><head><meta charset='utf-8'/>"
-        "<style>body{font-family:Georgia,serif;line-height:1.5;margin:1in;}</style>"
-        f"</head><body>{body}</body></html>"
+        "<style>body{font-family:Georgia,serif;line-height:1.5;margin:1in;}"
+        "h1,h2,h3{font-family:Arial,sans-serif;}</style>"
+        f"</head><body>{''.join(body)}</body></html>"
     )
 
 
